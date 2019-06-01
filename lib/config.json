@@ -1,0 +1,4 @@
+{
+    "GCLOUD_PROJECT": "demersa-final",
+    "DATA_BACKEND": "datastore"
+}
