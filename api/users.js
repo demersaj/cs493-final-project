@@ -194,6 +194,9 @@ router.put('/:id', checkJWT, function(req, res) {
 		.then( (user) => {
 			if(user[0] === undefined || user.length == 0) {
 				res.status(404).send('Error: inavlid user id');
+			}
+			else if (user[0].email != req.user.name){
+				res.status(403).send('Error: user does not have permission to edit this user');
 			} else {
 				put_user(req.params.id, req.body.name, req.body.email, req.body.clientAge)
 					.then(res.location(req.protocol + '://' + req.get('host') + req.baseUrl + '/' + req.params.id))
@@ -208,6 +211,8 @@ router.delete('/:id', checkJWT, function(req, res) {
 		.then( (user) => {
 			if(user[0] === undefined || user.length == 0) {
 				res.status(404).send('Error: inavlid user id');
+			} else if (user[0].owner != req.user.name){
+				res.status(403).send('Error: user does not have permission to delete this user');
 			} else {
 				delete_user(req.params.id).then(res.status(204).end());
 			}
