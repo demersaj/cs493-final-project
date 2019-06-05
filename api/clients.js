@@ -21,6 +21,7 @@ const checkJWT = jwt({
 });
 
 const CLIENT = 'Client';
+const USER = 'User';
 
 router.use(bodyParser.json());
 
@@ -53,7 +54,7 @@ async function get_client(id) {
 	return entity;
 }
 
-function post_client(name, diagnosis, age, medicalConditions, owner) {
+function post_client(name, diagnosis, age, owner) {
 	var key = datastore.key(CLIENT);
 	const newClient = {'name': name, 'diagnosis': diagnosis, 'age': age,'owner': owner};
 	return datastore.save( {"key":key, "data": newClient }).then(() => {return key});
@@ -100,6 +101,37 @@ function remove_client_program(clientId, programId) {
 		});
 }
 
+// used to remove a client from a user when the client has been deleted
+function remove_user_client(clientId, userId) {
+	var clientList = [];
+	const key = datastore.key([USER, parseInt(userId, 10)]);
+	const entity = datastore.get(key)
+		.then( (user) => {
+			for (var i = 0; i < user[0].clients.length; i++) {    // loop through client IDs
+				if (parseInt(user[0].clients[i].id, 10) != clientId) {     // if ID is NOT the one we are looking for                               
+					clientList.push(user[0].clients[i]);  // add it to new array
+				}
+			}
+			user[0].clients = clientList;
+			return datastore.save( {'key':key, 'data':user[0]} );
+		});
+}
+
+async function find_user(req){
+	const query = datastore
+		.createQuery(USER)
+		.filter('email', '=', req.user.name);
+
+	return user = await datastore.runQuery(query)
+		.then( (entities) => {
+			return entities[0].map(ds.fromDatastore);
+		});
+}
+
+// TODO: be able to add and delete programs to clients
+
+// TODO: handle deletion of programs for clients
+
 
 /* -------------- End client Model Functions -------------- */
 
@@ -113,8 +145,23 @@ router.get('/', function(req, res) {
 		});
 });
 
+router.get('/:id', checkJWT, function(req, res) {
+	const client = get_client(req.params.id)
+		.then( (client) => {
+			if(client[0] === undefined || client.length == 0) {
+				res.status(404).send('Error: invalid client id');
+			} else if (client[0].owner != req.user.name){
+				res.status(403).send('Error: user does not have permission to view this client');
+			} else {
+				client[0].self = req.protocol + '://' + req.get('host') + req.baseUrl + '/' + req.params.id;
+				client[0].id = req.params.id;
+				res.status(200).json(client[0]);
+			}
+		});
+});
+
 router.post('/', checkJWT, function(req, res) {
-	post_client(req.body.name, req.body.diagnosis, req.body.age, req.body.medicalConditions, req.user.name)
+	post_client(req.body.name, req.body.diagnosis, req.body.age, req.user.name)
 		.then( key => {	res.status(201).send('{ "id": ' + key.id + ' }')});
 });
 
@@ -124,7 +171,7 @@ router.put('/:id', checkJWT, function(req, res) {
 	const client = get_client(req.params.id)
 		.then( (client) => {
 			if(client[0] === undefined || client.length == 0) {
-				res.status(404).send('Error: inavlid client id');
+				res.status(404).send('Error: invalid client id');
 			}
 			else if (client[0].owner != req.user.name){
 				res.status(403).send('Error: user does not have permission to edit this client');
@@ -141,13 +188,16 @@ router.delete('/:id', checkJWT, function(req, res) {
 	const client = get_client(req.params.id)
 		.then( (client) => {
 			if(client[0] === undefined || client.length == 0) {
-				res.status(404).send('Error: inavlid client id');
-			} else if (client[0].email != req.user.name){
+				res.status(404).send('Error: invalid client id');
+			} else if (client[0].owner != req.user.name){
 				res.status(403).send('Error: user does not have permission to delete this client');
 			} else {
 				delete_client(req.params.id).then(res.status(204).end());
 				// update user's client list
-
+				const user = find_user(req)
+					.then( ( user ) => {
+						remove_user_client(req.params.id, user[0].id);
+					});
 			}
 		});
 });

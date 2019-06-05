@@ -48,6 +48,25 @@ function get_users(req, owner) {
 	});
 }
 
+function get_users_unsecured(req) {
+	var q = datastore.createQuery(USER).limit(5);
+	var results = {};
+	if(Object.keys(req.query).includes('cursor')) {
+		q = q.start(req.query.cursor);
+	}
+
+	return datastore.runQuery(q).then( (entities) => {
+		results.items = entities[0].map(ds.fromDatastore)
+		if(entities[1].moreResults !== ds.Datastore.NO_MORE_RESULTS) {
+			results.next = req.protocol + '://' + req.get('host') + req.baseUrl + '?cursor=' + entities[1].endCursor;
+		}
+		for (var i = 0; i < results.items.length; i++){
+			results.items[i].self = req.protocol + '://' + req.get('host') + req.baseUrl + '/' + results.items[i].id;
+		}
+		return results;
+	});
+}
+
 async function get_user(id) {
 	const key = datastore.key([USER, parseInt(id, 10)]);
 	const entity = await datastore.get(key);
@@ -111,8 +130,15 @@ function remove_user_client(clientId, userId) {
 
 /* -------------- Begin Controller Functions -------------- */
 
-router.get('/', function(req, res) {
+router.get('/', checkJWT, function(req, res) {
 	const users = get_users(req, req.user.name)
+		.then( (users) => {
+			res.status(200).json(users);
+		});
+});
+
+router.get('/unsecured', function(req, res) {
+	const users = get_users_unsecured(req)
 		.then( (users) => {
 			res.status(200).json(users);
 		});
@@ -177,8 +203,10 @@ router.post('/login', function(req, res){
 				username: username,
 				password: password,
 				client_id: 'bp9gjSxP4sBSNFuaKg8S5pqciFr0caG2',
-				client_secret: 'bMA2Yz775yA7oVfzM_xEOUgOMe6klXXuKrbVwISdjVJj8xvuBkKOKk5aFLhKpnSG' },
-		json: true};
+				client_secret: 'bMA2Yz775yA7oVfzM_xEOUgOMe6klXXuKrbVwISdjVJj8xvuBkKOKk5aFLhKpnSG' 
+			},
+		json: true
+	};
 	request(options, (error, response, body) => {
 		if (error) {
 			res.status(500).send(error);
@@ -267,7 +295,7 @@ router.delete('/:userID/clients/:clientID', checkJWT, function(req, res) {
 });
 
 
-// handle any invalid PUTS or DELETES
+// handle any invalid GETs, PUTs, or DELETEs
 router.put('/', function(req, res) {
 	res.set('Accept', 'GET, POST');
 	res.status(405).end();
@@ -275,6 +303,11 @@ router.put('/', function(req, res) {
 
 router.delete('/', function(req, res) {
 	res.set('Accept', 'GET, POST');
+	res.status(405).end();
+});
+
+router.get('/:userID/clients/:clientID', function(req, res) {
+	res.set('Accept', 'PUT, DELETE');
 	res.status(405).end();
 });
 
