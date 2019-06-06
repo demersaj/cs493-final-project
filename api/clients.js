@@ -22,18 +22,29 @@ const checkJWT = jwt({
 
 const CLIENT = 'Client';
 const USER = 'User';
+const PROGRAM = 'Program';
 
 router.use(bodyParser.json());
 
 /* ------------- Begin client Model Functions ------------- */
 
+// counts number of items in datastore
+function count_clients() {
+	const q = datastore.createQuery(CLIENT);
+	return datastore.runQuery(q)
+		.then( (count) => {
+			return count[0].length;
+		});
+}
+
 // returns a list of clients
-function get_clients(req) {
+async function get_clients(req) {
 	var q = datastore.createQuery(CLIENT).limit(5);
 	var results = {};
 	if(Object.keys(req.query).includes('cursor')){
 		q = q.start(req.query.cursor);
 	}
+	const itemCount = await count_clients();
 
 	return datastore.runQuery(q).then( (entities) => {
 		results.items = entities[0].map(ds.fromDatastore);
@@ -43,6 +54,7 @@ function get_clients(req) {
 		for (var i = 0; i < results.items.length; i++){
 			results.items[i].self = req.protocol + '://' + req.get('host') + req.baseUrl + '/' + results.items[i].id;
 		}
+		results.totalCount = itemCount;
 		return results;
 	});
 }
@@ -128,7 +140,12 @@ async function find_user(req){
 		});
 }
 
-// TODO: be able to add and delete programs to clients
+// returns a single program
+async function get_program(id) {
+	const key = datastore.key([PROGRAM, parseInt(id, 10)]);
+	const entity = await datastore.get(key);
+	return entity;
+}
 
 // TODO: handle deletion of programs for clients
 
@@ -139,6 +156,9 @@ async function find_user(req){
 /* -------------- Begin Controller Functions -------------- */
 
 router.get('/', function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	const clients = get_clients(req)
 		.then( (clients) => {
 			res.status(200).json(clients);
@@ -146,6 +166,9 @@ router.get('/', function(req, res) {
 });
 
 router.get('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	const client = get_client(req.params.id)
 		.then( (client) => {
 			if(client[0] === undefined || client.length == 0) {
@@ -161,12 +184,18 @@ router.get('/:id', checkJWT, function(req, res) {
 });
 
 router.post('/', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	post_client(req.body.name, req.body.diagnosis, req.body.age, req.user.name)
 		.then( key => {	res.status(201).send('{ "id": ' + key.id + ' }')});
 });
 
 
 router.put('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	// check if client id is valid
 	const client = get_client(req.params.id)
 		.then( (client) => {
@@ -184,6 +213,9 @@ router.put('/:id', checkJWT, function(req, res) {
 });
 
 router.delete('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	// check if client id is valid
 	const client = get_client(req.params.id)
 		.then( (client) => {
@@ -202,7 +234,62 @@ router.delete('/:id', checkJWT, function(req, res) {
 		});
 });
 
-// handle any invalid PUTS or DELETES
+
+router.put('/:clientID/programs/:programID', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
+	const client = get_client(req.params.clientID)
+		.then ( (client) => {
+			if(client[0] === undefined || client.length == 0) {
+				res.status(404).send('Error: invalid client id');
+			} else {
+				if (client[0].owner != req.user.name || client[0].owner == null) {
+					res.staus(403).send('Error: current user does not have permission to edit this client');
+				} else {
+					const program = get_program(req.params.programID)
+						.then( (program) => {
+							if(program[0] === undefined || program.length == 0) {
+								res.status(404).send('Error: invalid program id');
+							} else {
+								// update client
+								put_client_program(req.params.clientID, req.params.programID, req);
+								res.status(200).send('Program added to client');
+							}
+						});
+				}
+			}
+		});
+});
+
+router.delete('/:clientID/programs/:programID', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
+	const client = get_client(req.params.clientID)
+		.then ( (client) => {
+			if(client[0] === undefined || client.length == 0) {
+				res.status(404).send('Error: invalid client id');
+			} else {
+				if (client[0].owner != req.user.name || client[0].owner == null) {
+					res.staus(403).send('Error: current user does not have permission to edit this client');
+				} else {
+					const program = get_program(req.params.programID)
+						.then( (program) => {
+							if(program[0] === undefined || program.length == 0) {
+								res.status(404).send('Error: invalid program id');
+							} else {
+								// update client
+								remove_client_program(req.params.clientID, req.params.programID, req);
+								res.status(200).send('Program added to client');
+							}
+						});
+				}
+			}
+		});
+});
+
+// handle any invalid GETs, PUTs, or DELETEs
 router.put('/', function(req, res) {
 	res.set('Accept', 'GET, POST');
 	res.status(405).end();
@@ -212,6 +299,12 @@ router.delete('/', function(req, res) {
 	res.set('Accept', 'GET, POST');
 	res.status(405).end();
 });
+
+router.get('/:clientID/programs/:programID', function(req, res) {
+	res.set('Accept', 'PUT, DELETE');
+	res.status(405).end();
+});
+
 
 
 /* --------------- End Controller Functions --------------- */

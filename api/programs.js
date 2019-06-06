@@ -21,18 +21,29 @@ const checkJWT = jwt({
 });
 
 const PROGRAM = 'Program';
+const CLIENT = 'Client';
 
 router.use(bodyParser.json());
 
 /* ------------- Begin program Model Functions ------------- */
 
+function count_programs() {
+	const q = datastore.createQuery(PROGRAM);
+	return datastore.runQuery(q)
+		.then( (count) => {
+			return count[0].length;
+		});
+}
+
 // returns a list of programs
-function get_programs(req) {
+async function get_programs(req) {
 	var q = datastore.createQuery(PROGRAM).limit(5);
 	var results = {};
 	if(Object.keys(req.query).includes('cursor')){
 		q = q.start(req.query.cursor);
 	}
+
+	const itemCount = await count_programs();
 
 	return datastore.runQuery(q).then( (entities) => {
 		results.items = entities[0].map(ds.fromDatastore);
@@ -42,6 +53,8 @@ function get_programs(req) {
 		for (var i = 0; i < results.items.length; i++){
 			results.items[i].self = req.protocol + '://' + req.get('host') + req.baseUrl + '/' + results.items[i].id;
 		}
+
+		results.totalCount = itemCount;
 		return results;
 	});
 }
@@ -70,6 +83,33 @@ function delete_program(id) {
 	return datastore.delete(key);
 }
 
+async function client(req){
+	const query = datastore
+		.createQuery(CLIENT)
+		.filter('email', '=', req.user.name);
+
+	return client = await datastore.runQuery(query)
+		.then( (entities) => {
+			return entities[0].map(ds.fromDatastore);
+		});
+}
+
+
+function remove_client_program(clientId, programId) {
+	var programList = [];
+	const key = datastore.key([CLIENT, parseInt(clientId, 10)]);
+	const entity = datastore.get(key)
+		.then( (client) => {
+			for (var i = 0; i < client[0].programs.length; i++) {    // loop through client IDs
+				if (parseInt(client[0].programs[i].id, 10) != programId) {     // if ID is NOT the one we are looking for                               
+					programList.push(client[0].programs[i]);  // add it to new array
+				}
+			}
+			client[0].programs = programList;
+			return datastore.save( {'key':key, 'data':client[0]} );
+		});
+}
+
 
 /* -------------- End program Model Functions -------------- */
 
@@ -77,19 +117,43 @@ function delete_program(id) {
 /* -------------- Begin Controller Functions -------------- */
 
 router.get('/', function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
 	const programs = get_programs(req)
 		.then( (programs) => {
 			res.status(200).json(programs);
 		});
 });
 
+router.get('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
+	const program = get_program(req.params.id)
+		.then( (program) => {
+			if(program[0] === undefined || program.length == 0) {
+				res.status(404).send('Error: invalid user id');
+			} else {
+				program[0].self = req.protocol + '://' + req.get('host') + req.baseUrl + '/' + req.params.id;
+				program[0].id = req.params.id;
+				res.status(200).json(program[0]);
+			}
+		});
+});
+
 router.post('/', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	post_program(req.body.name, req.body.desc, req.body.suppliesNeeded)
 		.then( key => {	res.status(201).send('{ "id": ' + key.id + ' }')});
 });
 
 
 router.put('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	// check if program id is valid
 	const program = get_program(req.params.id)
 		.then( (program) => {
@@ -104,14 +168,21 @@ router.put('/:id', checkJWT, function(req, res) {
 });
 
 router.delete('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	// check if program id is valid
 	const program = get_program(req.params.id)
 		.then( (program) => {
 			if(program[0] === undefined || program.length == 0) {
-				res.status(404).send('Error: inavlid program id');
+				res.status(404).send('Error: invalid program id');
 			} else {
 				delete_program(req.params.id).then(res.status(204).end());
-			}
+			} 
+			const client = client(req)
+				.then( (client) => {
+					remove_client_program(client[0].id, req.params.id);
+				});
 		});
 });
 

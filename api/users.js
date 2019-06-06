@@ -29,21 +29,32 @@ router.use(bodyParser.json());
 
 /* ------------- Begin user Model Functions ------------- */
 
-function get_users(req, owner) {
+function count_users() {
+	const q = datastore.createQuery(USER);
+	return datastore.runQuery(q)
+		.then( (count) => {
+			return count[0].length;
+		});
+}
+
+async function get_users(req, owner) {
 	var q = datastore.createQuery(USER).limit(5);
 	var results = {};
 	if(Object.keys(req.query).includes('cursor')) {
 		q = q.start(req.query.cursor);
 	}
 
+	const itemCount = await count_users();
+
 	return datastore.runQuery(q).then( (entities) => {
-		results.items = entities[0].map(ds.fromDatastore).filter(item => item.email === owner);
+		results.items = entities[0].map(ds.fromDatastore)//.filter(item => item.email === owner);
 		if(entities[1].moreResults !== ds.Datastore.NO_MORE_RESULTS) {
 			results.next = req.protocol + '://' + req.get('host') + req.baseUrl + '?cursor=' + entities[1].endCursor;
 		}
 		for (var i = 0; i < results.items.length; i++){
 			results.items[i].self = req.protocol + '://' + req.get('host') + req.baseUrl + '/' + results.items[i].id;
 		}
+		results.totalCount = itemCount;
 		return results;
 	});
 }
@@ -131,6 +142,9 @@ function remove_user_client(clientId, userId) {
 /* -------------- Begin Controller Functions -------------- */
 
 router.get('/', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	const users = get_users(req, req.user.name)
 		.then( (users) => {
 			res.status(200).json(users);
@@ -138,6 +152,9 @@ router.get('/', checkJWT, function(req, res) {
 });
 
 router.get('/unsecured', function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	const users = get_users_unsecured(req)
 		.then( (users) => {
 			res.status(200).json(users);
@@ -145,6 +162,9 @@ router.get('/unsecured', function(req, res) {
 });
 
 router.get('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	const user = get_user(req.params.id)
 		.then( (user) => {
 			if(user[0] === undefined || user.length == 0) {
@@ -217,11 +237,14 @@ router.post('/login', function(req, res){
 });
 
 router.put('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	// check if user id is valid
 	const user = get_user(req.params.id)
 		.then( (user) => {
 			if(user[0] === undefined || user.length == 0) {
-				res.status(404).send('Error: inavlid user id');
+				res.status(404).send('Error: invalid user id');
 			}
 			else if (user[0].email != req.user.name){
 				res.status(403).send('Error: user does not have permission to edit this user');
@@ -234,6 +257,9 @@ router.put('/:id', checkJWT, function(req, res) {
 });
 
 router.delete('/:id', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	// check if user id is valid
 	const user = get_user(req.params.id)
 		.then( (user) => {
@@ -248,6 +274,9 @@ router.delete('/:id', checkJWT, function(req, res) {
 });
 
 router.put('/:userID/clients/:clientID', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	const client = get_client(req.params.clientID)
 		.then ( (client) => {
 			if(client[0] === undefined || client.length == 0) {
@@ -272,6 +301,9 @@ router.put('/:userID/clients/:clientID', checkJWT, function(req, res) {
 });
 
 router.delete('/:userID/clients/:clientID', checkJWT, function(req, res) {
+	const accepts = req.accepts('application/json');
+	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+
 	const client = get_client(req.params.clientID)
 		.then( (client) => {
 			if(client[0] === undefined || client.length == 0) {
@@ -305,6 +337,7 @@ router.delete('/', function(req, res) {
 	res.set('Accept', 'GET, POST');
 	res.status(405).end();
 });
+
 
 router.get('/:userID/clients/:clientID', function(req, res) {
 	res.set('Accept', 'PUT, DELETE');
