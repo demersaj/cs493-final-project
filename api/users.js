@@ -197,13 +197,12 @@ router.post('/', function(req, res) {
 		json: true
 	};
 
-	post_user(req.body.name, req.body.username, req.body.clientAge);
-
 	request(options, (error, response, body) => {
 		if (error) {
 			res.status(500).send(error);
 		} else {
-			res.send(body);
+			post_user(req.body.name, req.body.username, req.body.clientAge)
+				.then( key => {	res.status(201).send('{ "id": ' + key.id + ' }')});
 		}
 	});
 });
@@ -249,9 +248,9 @@ router.put('/:id', checkJWT, function(req, res) {
 			else if (user[0].email != req.user.name){
 				res.status(403).send('Error: user does not have permission to edit this user');
 			} else {
-				put_user(req.params.id, req.body.name, req.body.email, req.body.clientAge)
+				put_user(req.params.id, req.body.name, user[0].email, req.body.clientAge)
 					.then(res.location(req.protocol + '://' + req.get('host') + req.baseUrl + '/' + req.params.id))
-					.then(res.status(303).end());
+					.then(res.status(204).end());
 			}
 		});
 });
@@ -265,7 +264,7 @@ router.delete('/:id', checkJWT, function(req, res) {
 		.then( (user) => {
 			if(user[0] === undefined || user.length == 0) {
 				res.status(404).send('Error: inavlid user id');
-			} else if (user[0].owner != req.user.name){
+			} else if (user[0].email != req.user.name){
 				res.status(403).send('Error: user does not have permission to delete this user');
 			} else {
 				delete_user(req.params.id).then(res.status(204).end());
@@ -292,7 +291,7 @@ router.put('/:userID/clients/:clientID', checkJWT, function(req, res) {
 							} else {
 								// update user
 								put_user_client(req.params.clientID, req.params.userID, req);
-								res.status(200).send('Client added to user');
+								res.status(204).send('Client added to user');
 							}
 						});
 				}
@@ -318,7 +317,7 @@ router.delete('/:userID/clients/:clientID', checkJWT, function(req, res) {
 								res.status(400).end();
 							} else {
 								remove_user_client(req.params.clientID, req.params.userID);
-								res.status(200).send('Client removed from user');
+								res.status(204).send('Client removed from user');
 							}
 						});
 				}
@@ -337,7 +336,6 @@ router.delete('/', function(req, res) {
 	res.set('Accept', 'GET, POST');
 	res.status(405).end();
 });
-
 
 router.get('/:userID/clients/:clientID', function(req, res) {
 	res.set('Accept', 'PUT, DELETE');

@@ -72,7 +72,7 @@ function post_client(name, diagnosis, age, owner) {
 	return datastore.save( {"key":key, "data": newClient }).then(() => {return key});
 }
 
-function put_client(id, name, diagnosis, age, medicalConditions, owner) {
+function put_client(id, name, diagnosis, age, owner) {
 	const key = datastore.key([CLIENT, parseInt(id, 10)]);
 	const user = {'name': name, 'diagnosis': diagnosis, 'age': age, 'owner': owner};
 	return datastore.save( {'key':key, 'data': user} );
@@ -92,7 +92,7 @@ function put_client_program(clientId, programId, req) {
 			if (typeof(client[0].programs) === 'undefined' || client[0].programs == null) {
 				client[0].programs = [];
 			}
-			const newProgram = {'id': clientId, 'self': req.protocol + '://' + req.get('host') + req.baseUrl + '/' + clientId};
+			const newProgram = {'id': programId, 'self': req.protocol + '://' + req.get('host') + req.baseUrl + '/' + clientId};
 			client[0].programs.push(newProgram);
 			return datastore.save({'key': key, 'data':client[0]});
 		});
@@ -155,7 +155,7 @@ async function get_program(id) {
 
 /* -------------- Begin Controller Functions -------------- */
 
-router.get('/', function(req, res) {
+router.get('/', checkJWT, function(req, res) {
 	const accepts = req.accepts('application/json');
 	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
 
@@ -205,9 +205,9 @@ router.put('/:id', checkJWT, function(req, res) {
 			else if (client[0].owner != req.user.name){
 				res.status(403).send('Error: user does not have permission to edit this client');
 			} else {
-				put_client(req.params.id, req.body.name, req.body.diganosis, req.body.medicalConditions, req.body.owner)
+				put_client(req.params.id, req.body.name, req.body.diagnosis, req.body.age, req.body.owner)
 					.then(res.location(req.protocol + '://' + req.get('host') + req.baseUrl + '/' + req.params.id))
-					.then(res.status(303).end());
+					.then(res.status(204).end());
 			}
 		});
 });
@@ -254,7 +254,7 @@ router.put('/:clientID/programs/:programID', checkJWT, function(req, res) {
 							} else {
 								// update client
 								put_client_program(req.params.clientID, req.params.programID, req);
-								res.status(200).send('Program added to client');
+								res.status(204).send('Program added to client');
 							}
 						});
 				}
@@ -281,7 +281,7 @@ router.delete('/:clientID/programs/:programID', checkJWT, function(req, res) {
 							} else {
 								// update client
 								remove_client_program(req.params.clientID, req.params.programID, req);
-								res.status(200).send('Program added to client');
+								res.status(204).send('Program added to client');
 							}
 						});
 				}

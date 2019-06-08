@@ -83,18 +83,6 @@ function delete_program(id) {
 	return datastore.delete(key);
 }
 
-async function client(req){
-	const query = datastore
-		.createQuery(CLIENT)
-		.filter('email', '=', req.user.name);
-
-	return client = await datastore.runQuery(query)
-		.then( (entities) => {
-			return entities[0].map(ds.fromDatastore);
-		});
-}
-
-
 function remove_client_program(clientId, programId) {
 	var programList = [];
 	const key = datastore.key([CLIENT, parseInt(clientId, 10)]);
@@ -110,6 +98,30 @@ function remove_client_program(clientId, programId) {
 		});
 }
 
+// used when deleting a program
+async function get_client(id) {
+	const key = datastore.key([CLIENT, parseInt(id, 10)]);
+	const entity = await datastore.get(key);
+	console.log(entity[0]);
+	return entity;
+}
+
+async function find_client(programId) {
+	const key = datastore.key([PROGRAM, parseInt(programId, 10)]);
+	const entity = datastore.get(key)
+		.then( (entity) => {
+			const query = datastore
+				.createQuery(CLIENT)
+				.filter('program', '=', entity);
+
+			return user = datastore.runQuery(query)
+				.then( (entities) => {
+					console.log(entities);
+					return entities[0].map(ds.fromDatastore);
+				});
+
+		});
+}
 
 /* -------------- End program Model Functions -------------- */
 
@@ -143,7 +155,7 @@ router.get('/:id', checkJWT, function(req, res) {
 
 router.post('/', checkJWT, function(req, res) {
 	const accepts = req.accepts('application/json');
-	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+	if (!accepts || !req.body.name) {res.status(406).send(JSON.stringify('Not acceptable'));}
 
 	post_program(req.body.name, req.body.desc, req.body.suppliesNeeded)
 		.then( key => {	res.status(201).send('{ "id": ' + key.id + ' }')});
@@ -152,7 +164,7 @@ router.post('/', checkJWT, function(req, res) {
 
 router.put('/:id', checkJWT, function(req, res) {
 	const accepts = req.accepts('application/json');
-	if (!accepts) {res.status(406).send(JSON.stringify('Not acceptable'));}
+	if (!accepts ) {res.status(406).send(JSON.stringify('Not acceptable'));}
 
 	// check if program id is valid
 	const program = get_program(req.params.id)
@@ -162,7 +174,7 @@ router.put('/:id', checkJWT, function(req, res) {
 			} else {
 				put_program(req.body.name, req.body.desc, req.body.suppliesNeeded)
 					.then(res.location(req.protocol + '://' + req.get('host') + req.baseUrl + '/' + req.params.id))
-					.then(res.status(303).end());
+					.then(res.status(204).end());
 			}
 		});
 });
@@ -178,11 +190,7 @@ router.delete('/:id', checkJWT, function(req, res) {
 				res.status(404).send('Error: invalid program id');
 			} else {
 				delete_program(req.params.id).then(res.status(204).end());
-			} 
-			const client = client(req)
-				.then( (client) => {
-					remove_client_program(client[0].id, req.params.id);
-				});
+			}
 		});
 });
 
